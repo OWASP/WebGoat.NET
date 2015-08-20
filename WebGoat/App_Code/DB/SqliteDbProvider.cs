@@ -1,6 +1,6 @@
 using System;
 using System.Data;
-using System.Data.SQLite;
+using Mono.Data.Sqlite;
 using log4net;
 using System.Reflection;
 using System.IO;
@@ -25,17 +25,20 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
             _clientExec = configFile.Get(DbConstants.KEY_CLIENT_EXEC);
             _dbFileName = configFile.Get(DbConstants.KEY_FILE_NAME);
+
+            if (!File.Exists(_dbFileName))
+                SqliteConnection.CreateFile(_dbFileName);
         }
 
         public bool TestConnection()
         {   
             try
             {
-                using (SQLiteConnection conn = new SQLiteConnection(_connectionString))
+                using (SqliteConnection conn = new SqliteConnection(_connectionString))
                 {
                     conn.Open();
                     
-                    using (SQLiteCommand cmd = conn.CreateCommand())
+                    using (SqliteCommand cmd = conn.CreateCommand())
                     {
                     
                         cmd.CommandText = "SELECT date('now')";
@@ -54,9 +57,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public DataSet GetCatalogData()
         {
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter("select * from Products", connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter("select * from Products", connection);
                 DataSet ds = new DataSet();
             
                 da.Fill(ds);
@@ -67,16 +72,18 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public bool IsValidCustomerLogin(string email, string password)
         {
-                        //encode password
+            //encode password
             string encoded_password = Encoder.Encode(password);
             
             //check email/password
             string sql = "select * from CustomerLogin where email = '" + email + "' and password = '" + 
                          encoded_password + "';";
                         
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
             
                 //TODO: User reader instead (for all calls)
                 DataSet ds = new DataSet();
@@ -99,12 +106,23 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public bool RecreateGoatDb()
         {
-            log.Info("Running recreate");
+            try
+            {
+                log.Info("Running recreate");
+                string args = string.Format("\"{0}\"", _dbFileName);
+                string script = Path.Combine(Settings.RootDir, DbConstants.DB_CREATE_SQLITE_SCRIPT);
+                int retVal1 = Math.Abs(Util.RunProcessWithInput(_clientExec, args, script));
 
-            int retVal1 = Math.Abs(Util.RunProcessWithInput(_clientExec, _dbFileName, DbConstants.DB_CREATE_SCRIPT));
-            int retVal2 = Math.Abs(Util.RunProcessWithInput(_clientExec, _dbFileName, DbConstants.DB_LOAD_SQLITE_SCRIPT));
-            
-            return Math.Abs(retVal1) + Math.Abs(retVal2) == 0;
+                script = Path.Combine(Settings.RootDir, DbConstants.DB_LOAD_SQLITE_SCRIPT);
+                int retVal2 = Math.Abs(Util.RunProcessWithInput(_clientExec, args, script));
+
+                return Math.Abs(retVal1) + Math.Abs(retVal2) == 0;
+            }
+            catch (Exception ex)
+            {
+                log.Error("Error rebulding DB", ex);
+                return false;
+            }
         }
 
         //Find the bugs!
@@ -116,9 +134,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
                 //get data
                 string sql = "select * from CustomerLogin where email = '" + email + "';";
                 
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
-                    SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                    connection.Open();
+
+                    SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                     DataSet ds = new DataSet();
                     da.Fill(ds);
 
@@ -144,7 +164,7 @@ namespace OWASP.WebGoat.NET.App_Code.DB
                 }
                 
             }
-            catch (SQLiteException ex)
+            catch (SqliteException ex)
             {
                 log.Error("Error with custom customer login", ex);
                 error_message = ex.Message;
@@ -163,10 +183,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
             
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
+                    connection.Open();
+
                     string sql = "select email from CustomerLogin where customerNumber = " + customerNumber;
-                    SQLiteCommand command = new SQLiteCommand(sql, connection);
+                    SqliteCommand command = new SqliteCommand(sql, connection);
                     output = command.ExecuteScalar().ToString();
                 } 
             }
@@ -188,9 +210,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
             
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
-                    SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                    connection.Open();
+
+                    SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                     da.Fill(ds);
                 }
 
@@ -208,10 +232,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
         public DataSet GetOffice(string city)
         {
         
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 string sql = "select * from Offices where city = @city";
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 da.SelectCommand.Parameters.AddWithValue("@city", city);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
@@ -221,10 +247,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public DataSet GetComments(string productCode)
         {
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 string sql = "select * from Comments where productCode = @productCode";
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 da.SelectCommand.Parameters.AddWithValue("@productCode", productCode); 
                 DataSet ds = new DataSet();
                 da.Fill(ds);
@@ -240,9 +268,10 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
 
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
-                    SQLiteCommand command = new SQLiteCommand(sql, connection);
+                    connection.Open();
+                    SqliteCommand command = new SqliteCommand(sql, connection);
                     command.ExecuteNonQuery();
                 }
             }
@@ -262,9 +291,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
             
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
-                    SQLiteCommand command = new SQLiteCommand(sql, connection);
+                    connection.Open();
+
+                    SqliteCommand command = new SqliteCommand(sql, connection);
                 
                     int rows_added = command.ExecuteNonQuery();
                     
@@ -287,9 +318,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
                 
             string[] qAndA = new string[2];
             
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 
                 DataSet ds = new DataSet();
                 da.Fill(ds);
@@ -311,11 +344,13 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
             
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
+                    connection.Open();
+
                     //get data
                     string sql = "select * from CustomerLogin where email = '" + email + "';";
-                    SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                    SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                     DataSet ds = new DataSet();
                     da.Fill(ds);
 
@@ -339,10 +374,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public DataSet GetUsers()
         {
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 string sql = "select * from CustomerLogin;";
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
                 return ds;
@@ -352,10 +389,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
         public DataSet GetOrders(int customerID)
         {
         
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 string sql = "select * from Orders where customerNumber = " + customerID;
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
 
@@ -369,18 +408,20 @@ namespace OWASP.WebGoat.NET.App_Code.DB
         public DataSet GetProductDetails(string productCode)
         {
             string sql = string.Empty;
-            SQLiteDataAdapter da;
+            SqliteDataAdapter da;
             DataSet ds = new DataSet();
 
 
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 sql = "select * from Products where productCode = '" + productCode + "'";
-                da = new SQLiteDataAdapter(sql, connection);
+                da = new SqliteDataAdapter(sql, connection);
                 da.Fill(ds, "products");
 
                 sql = "select * from Comments where productCode = '" + productCode + "'";
-                da = new SQLiteDataAdapter(sql, connection);
+                da = new SqliteDataAdapter(sql, connection);
                 da.Fill(ds, "comments");
 
                 DataRelation dr = new DataRelation("prod_comments",
@@ -405,9 +446,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
                 "and OrderDetails.orderNumber = " + orderNumber;
             
             
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
 
@@ -420,10 +463,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
 
         public DataSet GetPayments(int customerNumber)
         {
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
+
                 string sql = "select * from Payments where customerNumber = " + customerNumber;
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
 
@@ -443,7 +488,7 @@ namespace OWASP.WebGoat.NET.App_Code.DB
         {
             //TODO: Rerun the database script.
             string sql = string.Empty;
-            SQLiteDataAdapter da;
+            SqliteDataAdapter da;
             DataSet ds = new DataSet();
 
             //catNumber is optional.  If it is greater than 0, add the clause to both statements.
@@ -452,15 +497,16 @@ namespace OWASP.WebGoat.NET.App_Code.DB
                 catClause += " where catNumber = " + catNumber; 
 
 
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
+                connection.Open();
 
                 sql = "select * from Categories" + catClause;
-                da = new SQLiteDataAdapter(sql, connection);
+                da = new SqliteDataAdapter(sql, connection);
                 da.Fill(ds, "categories");
 
                 sql = "select * from Products" + catClause;
-                da = new SQLiteDataAdapter(sql, connection);
+                da = new SqliteDataAdapter(sql, connection);
                 da.Fill(ds, "products");
 
 
@@ -480,9 +526,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             string sql = "select firstName, lastName, email from Employees where firstName like '" + name + "%' or lastName like '" + name + "%'";
             
             
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
 
@@ -499,10 +547,12 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             try
             {
             
-                using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+                using (SqliteConnection connection = new SqliteConnection(_connectionString))
                 {
+                    connection.Open();
+
                     string sql = "select email from CustomerLogin where customerNumber = " + num;
-                    SQLiteCommand cmd = new SQLiteCommand(sql, connection);
+                    SqliteCommand cmd = new SqliteCommand(sql, connection);
                     output = (string)cmd.ExecuteScalar();
                 }
                 
@@ -521,9 +571,11 @@ namespace OWASP.WebGoat.NET.App_Code.DB
             string sql = "select email from CustomerLogin where email like '" + email + "%'";
             
             
-            using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+            using (SqliteConnection connection = new SqliteConnection(_connectionString))
             {
-                SQLiteDataAdapter da = new SQLiteDataAdapter(sql, connection);
+                connection.Open();
+
+                SqliteDataAdapter da = new SqliteDataAdapter(sql, connection);
                 DataSet ds = new DataSet();
                 da.Fill(ds);
 
